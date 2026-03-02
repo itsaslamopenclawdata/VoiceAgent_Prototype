@@ -11,11 +11,14 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Build
+# Build for production
 RUN npm run build
+
+# Install serve for production
+RUN npm install -g serve
 
 # Expose port
 EXPOSE 3000
 
-# Run
-CMD ["npm", "run", "dev", "--", "--host"]
+# Use serve for production or npm run dev for development
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
