@@ -2,7 +2,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files first for better caching
 COPY package*.json ./
 
 # Install dependencies
@@ -11,14 +11,11 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Build for production
-RUN npm run build
-
-# Install serve for production
-RUN npm install -g serve
+# Remove node_modules and rebuild fresh in Docker
+RUN rm -rf node_modules && npm install
 
 # Expose port
 EXPOSE 3000
 
-# Use serve for production or npm run dev for development
+# Run in development mode with hot reload
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

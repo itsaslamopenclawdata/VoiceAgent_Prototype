@@ -6,21 +6,20 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
-    strictPort: true,
-    hmr: {
-      clientPort: 3000,
-    },
-    proxy: {
-      '/api': {
-        target: 'http://backend:8000',
-        changeOrigin: true,
-        secure: false,
-      },
+    strictPort: false,
+    fs: {
+      allow: ['..'],
     },
   },
   build: {
     outDir: 'dist',
     sourcemap: false,
-    chunkSizeWarningLimit: 1000,
+    minify: false,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
   },
+  cacheDir: 'node_modules/.vite',
 })
