@@ -33,4 +33,3 @@ sentry-sdk==1.40.0
 
 # Utilities
 python-dateutil==2.8.2
-ephemeral-port-reservation==0.2
