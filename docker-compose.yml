@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (Required)
   postgres:
     image: postgres:15-alpine
     container_name: repcon_db
@@ -19,7 +19,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis Cache
+  # Redis Cache (Required)
   redis:
     image: redis:7-alpine
     container_name: repcon_redis
@@ -33,25 +33,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # Ollama (LLM) - Optional, for local AI
-  ollama:
-    image: ollama/ollama:latest
-    container_name: repcon_ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      OLLAMA_HOST: 0.0.0.0
-    # Remove GPU section if not available
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
   # Backend API
   backend:
     build:
@@ -63,15 +44,10 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://repcon:repcon123@postgres:5432/repcon
       - REDIS_URL=redis://redis:6379
-      - OLLAMA_BASE_URL=http://ollama:11434
-      # Twilio - Optional (leave empty for local-only)
-      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
-      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
-      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
-      # Local-only mode (no external calls)
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - LOCAL_ONLY=true
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - JWT_SECRET=dev-jwt-secret-change-in-production
+      - SECRET_KEY=dev-secret-key
+      - JWT_SECRET=dev-jwt-secret
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,22 +70,9 @@ services:
     depends_on:
       - backend
 
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
-    container_name: repcon_nginx
-    ports:
-      - "80:80"
-    volumes:
-      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - backend
-      - frontend
-
 volumes:
   postgres_data:
   redis_data:
-  ollama_data:
 
 networks:
   default:
