@@ -1,6 +1,7 @@
 """
-RepCon Voice Agent - Webhook Routes (Twilio)
+RepCon Voice Agent - Webhook Routes
 """
+import os
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +13,9 @@ from app.models.models import Call, Institute, VoiceConfig
 
 router = APIRouter()
 
+# Check if running in local-only mode
+LOCAL_ONLY = os.getenv("LOCAL_ONLY", "false").lower() == "true"
+
 
 @router.post("/twilio/voice")
 async def twilio_voice_webhook(
@@ -19,6 +23,9 @@ async def twilio_voice_webhook(
     db: AsyncSession = Depends(get_db)
 ):
     """Handle incoming Twilio voice call"""
+    if LOCAL_ONLY:
+        return {'error': 'Twilio not configured. Use local mode.'}
+    
     # Get call parameters
     form_data = await request.form()
     call_sid = form_data.get("CallSid")
@@ -32,7 +39,6 @@ async def twilio_voice_webhook(
     institute = result.scalar_one_or_none()
     
     if not institute:
-        # Return error TwiML
         return '''<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>Sorry, we could not find your institution.</Say>
@@ -58,63 +64,85 @@ async def twilio_voice_webhook(
     await db.commit()
     await db.refresh(call)
     
-    # Return TwiML to connect to media stream
+    # Return TwiML
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>{greeting}</Say>
-    <Connect>
-        <Stream url="wss://your-domain.com/media-stream" />
-    </Connect>
-    <Say>Thank you for calling. Goodbye!</Say>
+    <Record maxLength="300" action="/api/v1/webhooks/twilio/recording" />
 </Response>'''
 
 
-@router.post("/twilio/status")
-async def twilio_status_webhook(
+@router.post("/twilio/recording")
+async def twilio_recording_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Handle Twilio call status callbacks"""
+    """Handle Twilio recording callback"""
+    if LOCAL_ONLY:
+        return {'error': 'Twilio not configured'}
+    
     form_data = await request.form()
     call_sid = form_data.get("CallSid")
-    call_status = form_data.get("CallStatus")
+    recording_url = form_data.get("RecordingUrl")
     
-    # Find and update call
+    # Update call record
     result = await db.execute(
         select(Call).where(Call.twilio_call_sid == call_sid)
     )
     call = result.scalar_one_or_none()
     
     if call:
-        call.status = call_status
-        
-        if call_status in ["completed", "busy", "no-answer", "failed"]:
-            call.ended_at = datetime.utcnow()
-            if call.started_at:
-                call.duration = int((call.ended_at - call.started_at).total_seconds())
-        
+        call.recording_url = recording_url
         await db.commit()
     
-    return "OK"
+    return {'status': 'recorded'}
 
 
-@router.websocket("/media-stream")
-async def media_stream(websocket):
-    """WebSocket for real-time audio streaming"""
-    await websocket.accept()
+@router.post("/local/test-call")
+async def local_test_call(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Local test endpoint - simulates a call without Twilio"""
+    data = await request.json()
     
-    try:
-        while True:
-            # Receive audio from Twilio
-            data = await websocket.receive_text()
-            
-            # Process audio (STT -> LLM -> TTS)
-            # This would integrate with the voice pipeline
-            
-            # Send response back
-            await websocket.send_text("ack")
-            
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-    finally:
-        await websocket.close()
+    institute_id = data.get("institute_id")
+    caller_phone = data.get("caller_phone", "+919999999999")
+    
+    # Find institute
+    result = await db.execute(
+        select(Institute).where(Institute.id == institute_id)
+    )
+    institute = result.scalar_one_or_none()
+    
+    if not institute:
+        raise HTTPException(status_code=404, detail="Institute not found")
+    
+    # Create test call
+    call = Call(
+        institute_id=institute_id,
+        caller_phone=caller_phone,
+        status="completed",
+        started_at=datetime.utcnow(),
+        ended_at=datetime.utcnow(),
+        duration=30,
+        notes="Test call from local mode"
+    )
+    db.add(call)
+    await db.commit()
+    await db.refresh(call)
+    
+    return {
+        "status": "success",
+        "message": "Test call recorded",
+        "call_id": call.id
+    }
+
+
+@router.get("/status")
+async def webhook_status():
+    """Check webhook status"""
+    return {
+        "local_only": LOCAL_ONLY,
+        "twilio_configured": not LOCAL_ONLY
+    }

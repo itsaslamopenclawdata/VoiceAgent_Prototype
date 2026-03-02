@@ -33,7 +33,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # Ollama (LLM)
+  # Ollama (LLM) - Optional, for local AI
   ollama:
     image: ollama/ollama:latest
     container_name: repcon_ollama
@@ -43,6 +43,7 @@ services:
       - ollama_data:/root/.ollama
     environment:
       OLLAMA_HOST: 0.0.0.0
+    # Remove GPU section if not available
     deploy:
       resources:
         reservations:
@@ -63,18 +64,19 @@ services:
       - DATABASE_URL=postgresql+asyncpg://repcon:repcon123@postgres:5432/repcon
       - REDIS_URL=redis://redis:6379
       - OLLAMA_BASE_URL=http://ollama:11434
-      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
-      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
-      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
-      - SECRET_KEY=${SECRET_KEY}
-      - JWT_SECRET=${JWT_SECRET}
+      # Twilio - Optional (leave empty for local-only)
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER:-}
+      # Local-only mode (no external calls)
+      - LOCAL_ONLY=true
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - JWT_SECRET=dev-jwt-secret-change-in-production
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ollama:
-        condition: service_started
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -88,17 +90,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - VITE_API_URL=http://backend:8000
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
+      - VITE_API_URL=http://localhost:8000
     depends_on:
       - backend
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # Nginx Reverse Proxy
   nginx:
@@ -106,10 +100,8 @@ services:
     container_name: repcon_nginx
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infrastructure/nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend
       - frontend
