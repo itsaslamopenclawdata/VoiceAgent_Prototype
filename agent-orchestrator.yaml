@@ -1,0 +1,30 @@
+# Agent Orchestrator Configuration - VoiceAgent_Prototype
+# RepCon Voice Agent - AI voice agent for educational institutes
+
+port: 3000
+
+defaults:
+  runtime: tmux
+  agent: claude-code
+  workspace: worktree
+  notifiers: [desktop]
+
+projects:
+  voice-agent:
+    repo: itsaslamopenclawdata/VoiceAgent_Prototype
+    path: /home/itsaslamautomations/.openclaw/workspace/VoiceAgent_Prototype
+    defaultBranch: main
+    sessionPrefix: va
+
+reactions:
+  ci-failed:
+    auto: true
+    action: send-to-agent
+    retries: 2
+  changes-requested:
+    auto: true
+    action: send-to-agent
+    escalateAfter: 30m
+  approved-and-green:
+    auto: false
+    action: notify
